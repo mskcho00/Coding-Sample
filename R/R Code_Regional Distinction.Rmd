@@ -1,0 +1,515 @@
+---
+title: "Regional Distiction in South Korea"
+output: html_document
+---
+```{r}
+# remove all stored data, values, and function
+# rm(list = ls())
+```
+
+# Basic Info: Source, Library, Data Call
+## Source
+```{r}
+# 인구감소지역 지정: https://www.mois.go.kr/frt/sub/a06/b06/populationDecline/screen.do
+# 서울과 세종은 적용 대상 X --> 테스트 포함 안 함
+# 2022년 지방소멸대응기금: https://www.korea.kr/news/policyNewsView.do?newsId=148898780
+# 지방소멸대응기금 최신: https://www.mois.go.kr/frt/sub/a06/b06/localextinctionFund/screen.do
+```
+## Library
+```{r}
+library(httr)
+library(httr2)
+library(rvest)
+library(jsonlite)
+library(ggplot2)
+library(dplyr)
+library(janitor)
+library(tidyverse)
+```
+
+```{r Font}
+# Font Load
+library(showtext)
+library(sysfonts)
+
+font_add_google("Nanum Gothic", "nanum")
+showtext_auto()
+showtext_opts(dpi = 400) 
+#"전출지/전입지(시도)/성/연령(5세)별 이동자수"
+```
+
+## Data Call
+```{r}
+dist_pop_url <- "https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NWI0MzQ3OTk3NjRhMTQ1ZjU2ZTUyN2Y4OWRlMjIwNmY=&itmId=T20+T21+T22+&objL1=00+11+26+27+28+29+30+31+36+41+51+43+44+52+46+47+48+50+&objL2=&objL3=&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=M&startPrdDe=201806&endPrdDe=202511&orgId=101&tblId=DT_1B040A3"
+
+resp <- GET(dist_pop_url)
+
+dist_pop <- content(resp, as = "text", encoding = "UTF-8") 
+dist_pop <- fromJSON(dist_pop)
+dist_pop
+```
+
+```{r}
+dist_entry <- read_csv('5yr_dist_entry_expand.csv',
+                       locale = locale(encoding = "EUC-KR")
+                       )
+
+dist_entry
+```
+
+# Data Cleaning
+## dist_pop
+### Column erase
+```{r}
+colnames(dist_pop)
+cat('\n')
+unique(dist_pop$ORG_ID)
+#UNIT_NM_ENG, C1_OBJ_NM, PRD_SE, TBL_ID, TBL_NM, ITM_NM_ENG, C1_NM_ENG, LST_CHN_DE, C1_OBJ_NM_ENG,ORG_ID unnecessary
+```
+
+```{r}
+dist_pop <- dist_pop |> select(-c(UNIT_NM_ENG, C1_OBJ_NM, PRD_SE, TBL_ID, TBL_NM,
+                                  ITM_NM_ENG, C1_NM_ENG, LST_CHN_DE, C1_OBJ_NM_ENG,
+                                  ORG_ID))
+dist_pop
+```
+
+### Date: Year / Month Separation
+```{r}
+dist_pop$YEAR <- as.integer(substr(dist_pop$PRD_DE, 1, 4))
+dist_pop$MONTH <- as.integer(substr(dist_pop$PRD_DE, 5, 6))
+dist_pop
+```
+
+```{r}
+# Zoo library helps the date format into Month and Year, without the whole YMD
+library(zoo)
+dist_pop$PRD_DE <- as.yearmon(dist_pop$PRD_DE,
+                              format = '%Y%m')
+dist_pop
+```
+
+### Districts Compiled to Physical Regions
+```{r}
+dist_pop <- dist_pop |>
+  mutate(region = case_when(C1_NM == '강원특별자치도'~'강원도',
+                            C1_NM %in% c('서울특별시', '경기도', '인천광역시') 
+                            ~ '수도권',
+                            C1_NM %in% c('충청북도','충청남도','대전광역시','세종특별자치시')
+                            ~'충청권',
+                            C1_NM %in% c('광주광역시', '전북특별자치도', '전라남도') 
+                            ~ '전라권',
+                            C1_NM == '제주특별자치도' ~'제주',
+                            C1_NM %in% c('경상남도', '경상북도','부산광역시','대구광역시')
+                            ~ '경상권',
+                            C1_NM == '전국' ~ '전국',
+                            TRUE ~ NA_character_)
+         )
+
+dist_pop
+```
+
+```{r}
+unique(dist_pop$ITM_NM)
+cat('\n')
+unique(dist_pop$UNIT_NM)
+# Don't need Men and Woman
+# Also units are unnecessary
+```
+
+```{r}
+dist_pop <- dist_pop |> filter(!ITM_NM %in% c('남자인구수',
+                                              '여자인구수')) |>
+  select(-c(UNIT_NM))
+dist_pop
+```
+
+## dist_entry
+### Column Cleaning
+```{r}
+colnames(dist_entry)
+```
+
+```{r}
+cat("Unique values for 전입지별:\n")
+print(unique(dist_entry$전입지별))
+
+cat('\nUnique values for 단위:\n')
+unique(dist_entry$단위) #--> units no need
+```
+
+```{r}
+#월 letter deletion
+
+dist_entry <- dist_entry |> select(-c(`...97`, `단위`)) |> 
+  filter(항목 == '순이동자수[명]',
+         성별 == '계')
+#OR
+#dist_entry <- dist_entry %>% select (-...66)
+names(dist_entry) <- gsub(" 월$", "", names(dist_entry))
+
+dist_entry
+```
+
+### Age group compile
+```{r}
+dist_entry <- dist_entry |> mutate('연령 계층' = case_when(
+  연령별 %in% c("계") ~ '총',
+  연령별 %in% c("0 - 4세", "5 - 9세", "10 - 14세") ~ '유소년층',
+  연령별 %in% c("15 - 19세", "20 - 24세") ~ '청소년/청년 초기층',
+  연령별 %in% c("25 - 29세", "30 - 34세") ~ '청년 후기층',
+  연령별 %in% c("35 - 39세", "40 - 44세", "45 - 49세", "50 - 54세") ~ '중년층',
+  연령별 %in% c("55 - 59세", "60 - 64세") ~ '장년층',
+  연령별 %in% c("65 - 69세", "70 - 74세", "75 - 79세", "80세이상") ~ '고령층',
+  TRUE ~ NA_character_
+))
+
+dist_entry
+```
+
+```{r}
+# Age group column relocation
+dist_entry <- dist_entry |> relocate('연령 계층', .after = '연령별')
+dist_entry
+```
+
+```{r}
+unique(dist_entry$전입지별)
+cat('\n')
+unique(dist_pop$C1_NM)
+cat('\n')
+dist_pop
+```
+
+# Visualization
+```{r}
+dist_pop |> filter(region != '전국') |> 
+  group_by(region, YEAR) |>
+  summarise(
+    avg_pop = mean(as.numeric(DT), na.rm = T),
+    .groups = 'drop'
+  ) |>
+  ggplot(aes(x = YEAR, y = avg_pop, color = region)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    title = '연도별 평균 인구',
+    x = '연도',
+    y = '평균 인구 (수)',
+    color = '광역권'
+  ) + 
+  theme_minimal()
+```
+Regional(not compiled as Metro)
+```{r}
+#color set by me
+my_colors <- c(
+  '서울특별시' = '#AE1832',
+  '경기도' = '#00983B',
+  '인천광역시' = '#0279C2',
+  '강원도' = '#9B5069',
+  '경상권' = '#35657A',
+  '전라권' = '#517A35',
+  '제주' = '#8A5C3E',
+  '충청권' = '#6D683D'
+)
+
+dist_pop |> filter(region != '전국') |>
+  mutate(
+    region_adj = case_when(
+      region == '수도권' & C1_NM %in% c('서울특별시', '경기도', '인천광역시') ~ C1_NM, 
+      T ~ region
+    )
+  ) |>
+  group_by(region_adj, YEAR) |>
+  summarise(
+    avg_pop = mean(as.numeric(DT), na.rm = T),
+    .groups = 'drop'
+  ) |>
+  ggplot(aes(x = YEAR, y = avg_pop, color = region_adj)) +
+  geom_point(size = 2) + 
+  geom_line(size = 1.2) + 
+  scale_color_manual(values = my_colors) + 
+  labs(
+    title = '연도별 평균 인구',
+    x = '연도',
+    y = '평균 인구 (수)',
+    color = '지역'
+  ) + 
+  theme_minimal()
+```
+
+```{r}
+ex1 <- dist_pop |> filter(region != '전국') |>
+  mutate(
+    region_adj = case_when(
+      region == '수도권' & C1_NM %in% c('서울특별시', '경기도', '인천광역시') ~ C1_NM, 
+      T ~ region
+    )
+  ) |>
+  group_by(region_adj, YEAR) |>
+  summarise(
+    avg_pop = mean(as.numeric(DT), na.rm = T),
+    .groups = 'drop'
+  ) |>
+  ggplot(aes(x = YEAR, y = avg_pop, color = region_adj)) +
+  geom_point(size = 1.5, alpha = 0.5) + 
+  geom_line(size = 1.2) + 
+  scale_color_manual(values = my_colors) + 
+  scale_y_continuous(labels = scales::comma) +
+  facet_wrap(~ region_adj, scales = "free_y", ncol = 3) + 
+  labs(
+    title = '연도별 평균 인구',
+    x = '연도',
+    y = '평균 인구 (수)',
+    color = '지역'
+  ) + 
+  theme(legend.position = 'none', strip.text = element_text(size = 12, face = 'bold')) + 
+  theme_minimal()
+
+ex1
+
+#ggsave("Example plot1.png", plot = ex1, width = 14, height = 10, dpi = 300)
+```
+
+```{r}
+pop_df <- dist_pop |>
+  group_by(region, YEAR) |>
+  summarise(
+    avg_pop = mean(as.numeric(DT), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+plot_fun <- function(df, title, ncol){
+  ggplot(df, aes(x = YEAR, y = avg_pop)) +
+    geom_line(linewidth = 1.3) +
+    geom_point(size = 2, alpha = 0.7) +
+    facet_wrap(~ region, scales = "free_y", ncol = ncol) +
+    scale_x_continuous(breaks = 2018:2025) +
+    scale_y_continuous(labels = scales::label_number(scale = 1e-6, suffix = "M")) +
+    labs(title = title, x = "Year", y = "Avg Population (M)") +
+    theme_minimal()
+}
+
+
+region_dfs <- pop_df |> filter(region != '전국')
+
+p3 <- plot_fun(region_dfs, "Avg Pop per Year (Metro & Non-Metro)", ncol = 2)
+
+p3
+
+# ggsave("Ex_Plot_Metro and NonMetro.png", width = 12, height = 8, dpi = 300)
+```
+
+# Geographic Location Visualization
+```{r}
+library(sf)
+shp <- st_read('ctprvn_20230729/ctprvn.shp', options = "ENCODING=CP949")
+shp
+```
+
+```{r}
+str(shp)
+```
+# Sample ggplot
+```{r}
+ggplot(shp) +
+  geom_sf(fill = 'grey90', color = 'grey30') + #--> 괄호 안에는 뒷 그리드 없애는 용도
+  theme_void()
+```
+# Data Rearrange for net migration rate standardization
+```{r}
+dist_entry_edit <- dist_entry |>
+  pivot_longer(cols = matches("^\\d{4}.\\d{2}$"),
+               names_to = 'DATE',
+               values_to = '순이동자수[명]'
+               ) |>
+  mutate(
+    YEAR = as.integer(str_sub(DATE, 1, 4)),
+    MONTH = as.integer(str_sub(DATE, 6, 7))
+  ) |>
+  select(-DATE)
+
+dist_entry_edit
+```
+
+```{r}
+# erase 전국
+dist_entry_edit <- dist_entry_edit |> filter(전입지별 != '전국')
+dist_entry_edit
+```
+
+```{r}
+population_clean <- dist_pop |>
+  mutate(population = as.numeric(DT)) 
+  # |>select(region, YEAR, MONTH, population)
+
+population_clean
+```
+
+```{r}
+#now scale the net migration
+dist_entry_scaled <- dist_entry_edit |>
+  rename(`C1_NM` = `전입지별`) |>
+  left_join(population_clean, by = c("C1_NM", "YEAR", "MONTH")) |>
+  mutate(
+    migration_rate = `순이동자수[명]` / `population`,
+    migration_per_1000 = migration_rate * 1000
+  )
+dist_entry_scaled
+```
+
+```{r}
+unique(dist_entry_scaled$전출지별)
+dist_entry_scaled <- dist_entry_scaled |> select(-c(전출지별, ITM_ID))
+
+dist_entry_scaled
+```
+
+```{r}
+#find if there's mismatched row
+dist_entry_scaled |> summarise(
+  n = n(),
+  missing_pop = sum(is.na(population))
+)
+```
+
+# Color the net migration rate
+```{r}
+# delta_city_means 사용
+# viz_dist <- dist_entry_scaled |>
+#   group_by()
+#dist_entry_scaled
+
+viz_dist <- dist_entry_scaled |> 
+  mutate(period = ifelse(
+    (YEAR < 2022) | (YEAR == 2022 & MONTH == 1),
+    'Pre', 'Post'
+  )) |>
+  group_by(C1_NM, period) |> 
+  summarise(mean_mig_1000 = mean(migration_per_1000), .groups = 'drop')
+
+viz_dist
+```
+
+```{r}
+viz_dist <- viz_dist |> pivot_wider(
+    names_from = period,
+    values_from = mean_mig_1000
+  )
+
+viz_dist
+```
+
+```{r}
+names(shp)
+unique(shp$CTP_KOR_NM)
+```
+
+```{r}
+#Jeonbuk name change reflect
+shp$CTP_KOR_NM[shp$CTP_KOR_NM == '전라북도'] <- '전북특별자치도'
+shp
+```
+
+```{r}
+shp_join <- shp |>
+  left_join(viz_dist, by = c('CTP_KOR_NM' = 'C1_NM'))
+
+shp_join
+```
+
+```{r}
+lim <- range(c(shp_join$Pre, shp_join$Post), na.rm = TRUE)
+
+equi_scale <- scale_fill_gradient2(
+  low = '#d73027',
+  mid = 'grey',
+  high = 'blue',
+  midpoint = 0,
+  limits = lim,
+  name = 'Net Migration\n(per thousands)',
+  guide = guide_colorbar(
+    title.position = 'top',
+    title.hjust= 0.5
+  )
+)
+
+# Pre
+pre_geo <- ggplot(shp_join) +
+  geom_sf(aes(fill = Pre), color = 'white', size = 0.2) + 
+  equi_scale + 
+  labs(title = 'Before Policy') + 
+  theme_void() 
+
+pre_geo
+# ggsave("Pre Geo.png", plot = pre_geo
+#        , width = 12, height = 10, dpi = 300
+#        )
+
+#Post
+post_geo <- ggplot(shp_join) +
+  geom_sf(aes(fill = Post), color = 'white', size = 0.2) + 
+    equi_scale +
+  labs(title = 'After Policy') + 
+  theme_void()
+
+post_geo
+# ggsave("Post Geo.png", plot = post_geo 
+#        , width = 12, height = 10, dpi = 300
+#        )
+```
+# t-test & ANVOA
+## t-test
+```{r}
+city_means <- dist_entry_scaled |>
+  filter(!(C1_NM %in% c('서울특별시', '세종특별자치시'))) |>
+  mutate(period = ifelse(
+    (YEAR < 2022) | (YEAR == 2022 & MONTH == 1),
+    'Pre', 'Post'
+  )) |>
+  group_by(C1_NM, period) |>
+  summarise(mean_mig_1000 = mean(migration_per_1000), .groups = 'drop')
+
+city_means
+```
+
+```{r}
+t.test(
+  city_means$mean_mig_1000[city_means$period == 'Post'],
+  city_means$mean_mig_1000[city_means$period == 'Pre'],
+  paired = TRUE
+)
+```
+
+## ANOVA
+```{r}
+delta_city_means <- city_means |>
+  pivot_wider(
+    names_from = period,
+    values_from = mean_mig_1000
+  ) |>
+  mutate(diff = Post - Pre)
+
+delta_city_means
+```
+
+# Here, compare regional types (광역시, 도, 특별자치도)
+```{r Compare between regional types (광역시, 도, 특별자치도)}
+delta_city_means <- delta_city_means |>
+  mutate(
+    region_type = case_when(
+      C1_NM %in% c('강원특별자치도', '전북특별자치도', '제주특별자치도') ~ '특별자치도',
+      C1_NM %in% c('경기도', '경상남도', '경상북도', '전라남도', '충청남도', '충청북도') ~ '도',
+      TRUE ~ '광역시'
+    )
+  )
+
+delta_city_means
+```
+
+```{r}
+#ANOVA 테스팅
+anova_res <- aov(diff ~ region_type, data = delta_city_means)
+summary(anova_res)
+```

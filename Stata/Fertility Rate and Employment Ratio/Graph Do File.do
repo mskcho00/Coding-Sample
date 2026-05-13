@@ -1,0 +1,5 @@
+*For Figure 1
+twoway (scatter fertrate employtopop if Time==2009, mcolor(red) mlabel(CountryName) mlabsize(medsmall) mlabcolor(blue) mlabposition(3)) if Time==2009, ytitle("Fertility Rate") xtitle("Employment to Population Ratio") title("Scatterplot of Employment to Population Ratio and Fertility Rate") subtitle("Countries in 2009") note("Data: World Bank Databank") legend(title("GDP per Capita"))
+
+*For Figure 2
+twoway (scatter fertrate GDPpercap_in_thousand if GDPpercap_in_thousand < 1.5, mcolor(red) mlabel(CountryName) mlabsize(small) mlabcolor(red) mlabposition(3)) (scatter fertrate GDPpercap_in_thousand if GDPpercap_in_thousand > 58, mcolor(green) mlabel(CountryName) mlabsize(small) mlabcolor(green) mlabposition(3)) (lfit fertrate GDPpercap_in_thousand, lcolor(stc3) lwidth(medium)) if Time==2009, ytitle("Fertility Rate") xtitle("GDP per Capita (in $1,000)") title("Scatterplot of GDP per Capita and Fertility Rate") subtitle("Top 10 countries and Lowest 10 countries in 2009") caption("11th and 12th high countries are included due to two high countries didn't report fertility rate") note("Data: World Bank Databank") legend(on title("GDP per Capita"))
