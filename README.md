@@ -1,7 +1,7 @@
 # Coding Samples — MinSeok (Michael) Cho
 
 A collection of data analysis and econometric coding samples across Python, R, and Stata,
-demonstrating applied research skills in housing economics and demographic analysis.
+demonstrating applied research skills in urban economics and demographic analysis.
 
 ## Contents
 
