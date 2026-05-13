@@ -25,4 +25,4 @@ demonstrating applied research skills in urban economics and demographic analysi
 
 ## Author
 MinSeok (Michael) Cho | Boston University, BA Economics & BS Data Science, May 2026
-[LinkedIn]([https://www.linkedin.com/in/mskcho00/]) | mskcho00@gmail.com
+[LinkedIn](https://www.linkedin.com/in/mskcho00/) | mskcho00@gmail.com
