@@ -15,11 +15,11 @@ demonstrating applied research skills in urban economics and demographic analysi
   Regional-level data of South Korea visualization, exploring geographic variation in key indicators (population, migration)
 
 ### Stata
-- **Aging Population and Housing Prices**
+- **Aging Population and Housing Prices** <br>
   Panel data analysis examining how demographic aging affects housing prices across 31 OECD countries.
   Employs fixed effects modeling with country and year controls.
 
-- **Fertility Rate and Employment Ratio**
+- **Fertility Rate and Employment Ratio** <br>
   Econometric analysis of the relationship between fertility trends and labor force participation across over 100 countries from World Bank Data.
   Employs time and entity fixed effects using Panel data.
 
