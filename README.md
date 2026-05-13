@@ -6,12 +6,12 @@ demonstrating applied research skills in urban economics and demographic analysi
 ## Contents
 
 ### Python
-- **NYC Rent Burden — Lasso Regression** (`MinSeok Cho_NYC_Rent_Regression_20260328.ipynb`)
+- **NYC Rent Burden — Lasso Regression** (`MinSeok Cho_NYC_Rent_Regression_20260328.ipynb`) <br>
   Lasso regression analysis of rent burden across NYC neighborhoods using census and housing data.
   Presented at NYC School of Data (BetaNYC) Unconference.
 
 ### R
-- **Regional Distinction Analysis** (`R Code_Regional Distinction.Rmd`)
+- **Regional Distinction Analysis** (`R Code_Regional Distinction.Rmd`) <br>
   Regional-level data of South Korea visualization, exploring geographic variation in key indicators (population, migration)
 
 ### Stata
